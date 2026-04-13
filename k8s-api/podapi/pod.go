@@ -12,58 +12,59 @@ import (
 	"github.com/gin-gonic/gin"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 type PodInfo struct {
-	Name      string  `json:"name"`
-	Namespace string  `json:"namespace"`
-	Status    string  `json:"status"`
-	Ready     bool    `json:"ready"`
-	Restarts  int32   `json:"restarts"`
-	Node      string  `json:"node"`
-	Age       v1.Time `json:"age"`
+	Name       string   `json:"name"`
+	Namespace  string   `json:"namespace"`
+	Status     string   `json:"status"`
+	Ready      string   `json:"ready"`      // "就绪数/总数" 如 "1/2"
+	Restarts   int32    `json:"restarts"`
+	Node       string   `json:"node"`
+	Age        string   `json:"age"`
+	Containers []string `json:"containers"` // 容器名列表，终端/日志切换用
 }
 
 func GetPods(c *gin.Context) {
-	// firstname := c.DefaultQuery("firstname", "Guest")
-	namespace := c.Query("namespace") // shortcut for c.Request.URL.Query().Get("lastname")
+	namespace := c.Query("namespace")
 
 	pl, err := config.Client.CoreV1().Pods(namespace).List(context.Background(), metav1.ListOptions{})
 	if err != nil {
-		fmt.Printf("err: %v\n", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"message": err.Error()})
 		return
 	}
 
-	var podlist = []PodInfo{}
-	for _, v := range pl.Items {
-
-		// podinfo.Ready = v.Status.ContainerStatuses
-		v2, err := config.Client.CoreV1().Pods(namespace).Get(context.Background(), v.Name, v1.GetOptions{})
-		if err != nil {
-			return
-		}
-
-		for _, v1 := range v2.Status.ContainerStatuses {
-			podinfo := PodInfo{
-				Name:      v2.ObjectMeta.Name,
-				Namespace: namespace,
-				Status:    string(v2.Status.Phase),
-				Ready:     v1.Ready,
-				Restarts:  v1.RestartCount,
-				Node:      v.Spec.NodeName,
-				Age:       v.ObjectMeta.CreationTimestamp,
+	podlist := make([]PodInfo, 0, len(pl.Items))
+	for _, p := range pl.Items {
+		// 统计重启次数 & 就绪容器数
+		var restarts int32
+		readyCount := 0
+		for _, cs := range p.Status.ContainerStatuses {
+			restarts += cs.RestartCount
+			if cs.Ready {
+				readyCount++
 			}
-			podlist = append(podlist, podinfo)
-
 		}
 
+		// 收集所有容器名（用于日志/终端切换）
+		containers := make([]string, 0, len(p.Spec.Containers))
+		for _, c := range p.Spec.Containers {
+			containers = append(containers, c.Name)
+		}
+
+		podlist = append(podlist, PodInfo{
+			Name:       p.Name,
+			Namespace:  p.Namespace,
+			Status:     string(p.Status.Phase),
+			Ready:      fmt.Sprintf("%d/%d", readyCount, len(p.Spec.Containers)),
+			Restarts:   restarts,
+			Node:       p.Spec.NodeName,
+			Age:        p.CreationTimestamp.Format("2006-01-02 15:04:05"),
+			Containers: containers,
+		})
 	}
 
-	c.JSON(200, gin.H{
-		"data": podlist,
-	})
-
+	c.JSON(http.StatusOK, gin.H{"data": podlist})
 }
 
 func DeletePod(c *gin.Context) {
@@ -71,7 +72,7 @@ func DeletePod(c *gin.Context) {
 	namespace := c.Param("namespace")
 	pod := c.Param("pod")
 
-	err := config.Client.CoreV1().Pods(namespace).Delete(context.Background(), pod, v1.DeleteOptions{})
+	err := config.Client.CoreV1().Pods(namespace).Delete(context.Background(), pod, metav1.DeleteOptions{})
 	if err != nil {
 		fmt.Printf("err: %v\n", err)
 		return
@@ -119,7 +120,7 @@ func PostPodRestart(c *gin.Context) {
 	namespace := c.Param("namespace")
 	pod := c.Param("pod")
 
-	err := config.Client.CoreV1().Pods(namespace).Delete(context.Background(), pod, v1.DeleteOptions{})
+	err := config.Client.CoreV1().Pods(namespace).Delete(context.Background(), pod, metav1.DeleteOptions{})
 	if err != nil {
 		fmt.Printf("err: %v\n", err)
 		return
