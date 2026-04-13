@@ -34,7 +34,7 @@ func main() {
 	r.POST("/api/deployments/:namespace/:deploy/restart", deploymentsapi.RestartDeployment)
 	r.GET("/api/services", servicesapi.GetServicesList)
 	r.GET("/api/pods/:namespace/:pod/events", podapi.GetPodEvents)
-	r.GET("/api/pods/:namespace/:pod/exec", podapi.WebsocketTest)
+	r.GET("/api/pods/:namespace/:pod/exec", podapi.ExecPod)
 
 	// Start server on port 8080 (default)
 	// Server will listen on 0.0.0.0:8080 (localhost:8080 on Windows)
