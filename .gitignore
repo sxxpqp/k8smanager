@@ -1,0 +1,9 @@
+/*/
+
+# 2. 排除（即保留）k8s 开头的文件夹
+!k8s-api/
+!k8s-ui/
+# .gitignore
+# 忽略 Delve 调试生成的临
+__debug_bin*
+node_modules/
