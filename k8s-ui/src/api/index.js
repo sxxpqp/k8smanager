@@ -64,3 +64,21 @@ export const getConfigMapDetail = (namespace, name) =>
 
 export const updateConfigMap = (namespace, name, data) =>
   http.put(`/configmaps/${namespace}/${name}`, { data })
+
+// ── Secret ───────────────────────────────────────────
+export const getSecrets = (namespace) =>
+  http.get('/secrets', { params: { namespace } })
+
+export const getSecretDetail = (namespace, name) =>
+  http.get(`/secrets/${namespace}/${name}`)
+
+// ── Ingress ──────────────────────────────────────────
+export const getIngresses = (namespace) =>
+  http.get('/ingresses', { params: { namespace } })
+
+// ── StatefulSet ──────────────────────────────────────
+export const getStatefulSets = (namespace) =>
+  http.get('/statefulsets', { params: { namespace } })
+
+export const scaleStatefulSet = (namespace, name, replicas) =>
+  http.patch(`/statefulsets/${namespace}/${name}/scale`, { replicas })

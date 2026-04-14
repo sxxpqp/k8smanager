@@ -371,7 +371,115 @@
         </el-table>
       </el-tab-pane>
 
+      <!-- ══ Secret ══ -->
+      <el-tab-pane name="secrets" lazy>
+        <template #label>Secrets</template>
+        <el-table :data="filteredSecrets" v-loading="loading" stripe style="width:100%">
+          <el-table-column label="名称" prop="name" min-width="220">
+            <template #default="{ row }">
+              <span class="mono primary">{{ row.name }}</span>
+            </template>
+          </el-table-column>
+          <el-table-column label="类型" prop="type" min-width="200">
+            <template #default="{ row }">
+              <el-tag size="small" effect="plain" type="info">{{ row.type }}</el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column label="键数量" width="90" align="center">
+            <template #default="{ row }">
+              <el-tag size="small">{{ row.keyCount }} 个键</el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column label="创建时间" prop="age" width="165">
+            <template #default="{ row }"><span class="muted">{{ row.age }}</span></template>
+          </el-table-column>
+          <el-table-column label="操作" width="90" fixed="right">
+            <template #default="{ row }">
+              <el-button size="small" :icon="View" @click="openSecret(row)">查看</el-button>
+            </template>
+          </el-table-column>
+        </el-table>
+      </el-tab-pane>
+
+      <!-- ══ Ingress ══ -->
+      <el-tab-pane name="ingresses" lazy>
+        <template #label>Ingress</template>
+        <el-table :data="filteredIngresses" v-loading="loading" stripe style="width:100%">
+          <el-table-column label="名称" prop="name" min-width="180">
+            <template #default="{ row }">
+              <span class="mono primary">{{ row.name }}</span>
+            </template>
+          </el-table-column>
+          <el-table-column label="IngressClass" prop="className" width="140">
+            <template #default="{ row }">
+              <el-tag size="small" effect="plain">{{ row.className || '-' }}</el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column label="规则" min-width="300">
+            <template #default="{ row }">
+              <div v-for="rule in row.rules" :key="rule.host" class="ingress-rule">
+                <span class="ingress-host">{{ rule.host }}</span>
+                <span v-for="path in rule.paths" :key="path"
+                  class="ingress-path muted small">{{ path }}</span>
+              </div>
+            </template>
+          </el-table-column>
+          <el-table-column label="创建时间" prop="age" width="165">
+            <template #default="{ row }"><span class="muted">{{ row.age }}</span></template>
+          </el-table-column>
+        </el-table>
+      </el-tab-pane>
+
+      <!-- ══ StatefulSet ══ -->
+      <el-tab-pane name="statefulsets" lazy>
+        <template #label>StatefulSets</template>
+        <el-table :data="filteredStatefulSets" v-loading="loading" stripe style="width:100%">
+          <el-table-column label="名称" prop="name" min-width="200">
+            <template #default="{ row }"><span class="mono">{{ row.name }}</span></template>
+          </el-table-column>
+          <el-table-column label="状态" width="90">
+            <template #default="{ row }">
+              <el-tag size="small" effect="light"
+                :type="row.replicas===0?'info':row.readyReplicas===row.replicas?'success':'warning'">
+                {{ row.replicas===0?'已停止':row.readyReplicas===row.replicas?'正常':'更新中' }}
+              </el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column label="镜像" prop="image" min-width="200">
+            <template #default="{ row }">
+              <span class="mono muted small">{{ row.image }}</span>
+            </template>
+          </el-table-column>
+          <el-table-column label="Pod 数量" width="190" align="center">
+            <template #default="{ row }">
+              <div class="scale-control">
+                <el-button circle size="small" :icon="Minus"
+                  :disabled="row.replicas<=0||row._scaling"
+                  @click="handleStsScale(row, row.replicas-1)" />
+                <div class="scale-info">
+                  <span class="scale-num" :class="{stopped:row.replicas===0}">{{ row.replicas }}</span>
+                  <span class="scale-ready">{{ row.readyReplicas }}/{{ row.replicas }} 就绪</span>
+                </div>
+                <el-button circle size="small" :icon="Plus"
+                  :disabled="row._scaling"
+                  @click="handleStsScale(row, row.replicas+1)" />
+              </div>
+            </template>
+          </el-table-column>
+          <el-table-column label="创建时间" prop="age" width="165">
+            <template #default="{ row }"><span class="muted">{{ row.age }}</span></template>
+          </el-table-column>
+        </el-table>
+      </el-tab-pane>
+
     </el-tabs>
+
+    <!-- Secret 查看弹窗 -->
+    <SecretViewer
+      v-model="secretViewerVisible"
+      :namespace="secretTarget.namespace"
+      :secret-name="secretTarget.name"
+    />
 
     <!-- 镜像更新弹窗 -->
     <ImageUpdateDialog
@@ -506,19 +614,20 @@ import { ElMessage } from 'element-plus'
 import {
   Refresh, RefreshRight, Delete, Document, Edit,
   VideoPlay, VideoPause, Plus, Minus, Upload,
-  Search, Grid, Warning, InfoFilled, Monitor,
+  Search, Grid, Warning, InfoFilled, Monitor, View,
   SuccessFilled, WarningFilled, CircleCloseFilled, QuestionFilled
 } from '@element-plus/icons-vue'
 import {
   getNamespaces, getPods, deletePod, restartPod,
   getDeployments, scaleDeployment, restartDeployment,
-  getServices, getPodEvents,
-  getNodes, getConfigMaps
+  getServices, getPodEvents, getNodes, getConfigMaps,
+  getSecrets, getIngresses, getStatefulSets, scaleStatefulSet
 } from '../api/index.js'
 import LogDialog         from '../components/LogDialog.vue'
 import TerminalDialog    from '../components/TerminalDialog.vue'
 import ImageUpdateDialog from '../components/ImageUpdateDialog.vue'
 import ConfigMapEditor   from '../components/ConfigMapEditor.vue'
+import SecretViewer      from '../components/SecretViewer.vue'
 
 // ── 状态 ──────────────────────────────────────────────
 const namespace       = ref('default')
@@ -546,6 +655,26 @@ const termTarget        = ref({ namespace: '', name: '', containers: [] })
 // 节点
 const nodes        = ref([])
 const nodesLoading = ref(false)
+
+// Secret
+const secrets             = ref([])
+const secretViewerVisible = ref(false)
+const secretTarget        = ref({ namespace: '', name: '' })
+const filteredSecrets     = computed(() =>
+  searchText.value ? secrets.value.filter(s => s.name.includes(searchText.value)) : secrets.value
+)
+
+// Ingress
+const ingresses        = ref([])
+const filteredIngresses = computed(() =>
+  searchText.value ? ingresses.value.filter(i => i.name.includes(searchText.value)) : ingresses.value
+)
+
+// StatefulSet
+const statefulSets         = ref([])
+const filteredStatefulSets = computed(() =>
+  searchText.value ? statefulSets.value.filter(s => s.name.includes(searchText.value)) : statefulSets.value
+)
 
 // ConfigMap
 const configMaps           = ref([])
@@ -685,22 +814,35 @@ async function loadConfigMaps() {
 
 async function loadAll() {
   loading.value = true
-  await Promise.all([loadPods(), loadDeployments(), loadServices(), loadConfigMaps()])
+  const tasks = [loadPods(), loadDeployments(), loadServices(), loadConfigMaps()]
+  // 已经加载过的懒加载 Tab，刷新时一并更新
+  if (nodes.value.length       || activeTab.value === 'nodes')        tasks.push(loadNodes())
+  if (secrets.value.length     || activeTab.value === 'secrets')      tasks.push(loadSecrets())
+  if (ingresses.value.length   || activeTab.value === 'ingresses')    tasks.push(loadIngresses())
+  if (statefulSets.value.length|| activeTab.value === 'statefulsets') tasks.push(loadStatefulSets())
+  await Promise.all(tasks)
   loading.value = false
   lastRefreshTime.value = new Date().toLocaleTimeString()
 }
 
 function onNsChange() {
-  pods.value = []
+  pods.value        = []
   deployments.value = []
-  services.value = []
-  configMaps.value = []
+  services.value    = []
+  configMaps.value  = []
+  secrets.value     = []
+  ingresses.value   = []
+  statefulSets.value= []
+  // nodes 是集群级别，不受 namespace 影响，无需清空
   loadAll()
 }
 
-// 节点 tab 懒加载
+// Tab 懒加载
 watch(activeTab, tab => {
-  if (tab === 'nodes' && !nodes.value.length) loadNodes()
+  if (tab === 'nodes'       && !nodes.value.length)       loadNodes()
+  if (tab === 'secrets'     && !secrets.value.length)     loadSecrets()
+  if (tab === 'ingresses'   && !ingresses.value.length)   loadIngresses()
+  if (tab === 'statefulsets'&& !statefulSets.value.length) loadStatefulSets()
 })
 
 function handleUpdateImage(row) {
@@ -717,6 +859,67 @@ function handleUpdateImage(row) {
 function openConfigMap(row) {
   cmTarget.value        = { namespace: row.namespace, name: row.name }
   cmEditorVisible.value = true
+}
+
+async function loadSecrets() {
+  try {
+    const res = await getSecrets(namespace.value)
+    secrets.value = res.data ?? []
+  } catch (e) { ElMessage.error('获取 Secret 失败: ' + e.message) }
+}
+
+function openSecret(row) {
+  secretTarget.value        = { namespace: row.namespace, name: row.name }
+  secretViewerVisible.value = true
+}
+
+async function loadIngresses() {
+  try {
+    const res = await getIngresses(namespace.value)
+    ingresses.value = res.data ?? []
+  } catch (e) { ElMessage.error('获取 Ingress 失败: ' + e.message) }
+}
+
+async function loadStatefulSets() {
+  try {
+    const res = await getStatefulSets(namespace.value)
+    const fresh = res.data ?? []
+    if (statefulSets.value.length === 0) {
+      statefulSets.value = fresh.map(s => ({ ...s, _scaling: false }))
+    } else {
+      fresh.forEach(s => {
+        const exist = statefulSets.value.find(r => r.name === s.name && r.namespace === s.namespace)
+        if (exist) {
+          if (!exist._scaling) exist.replicas = s.replicas
+          exist.readyReplicas = s.readyReplicas
+          exist.image = s.image
+        } else {
+          statefulSets.value.push({ ...s, _scaling: false })
+        }
+      })
+      // 删除已不存在的
+      statefulSets.value = statefulSets.value.filter(r =>
+        fresh.some(s => s.name === r.name && s.namespace === r.namespace)
+      )
+    }
+  } catch (e) { ElMessage.error('获取 StatefulSet 失败: ' + e.message) }
+}
+
+async function handleStsScale(row, replicas) {
+  if (replicas < 0) return
+  const prev = row.replicas
+  try {
+    row._scaling = true
+    row.replicas = replicas
+    await scaleStatefulSet(row.namespace, row.name, replicas)
+    ElMessage.success(`已扩缩容至 ${replicas} 副本`)
+    setTimeout(loadStatefulSets, 2000)
+  } catch (e) {
+    row.replicas = prev
+    ElMessage.error(e.message)
+  } finally {
+    row._scaling = false
+  }
 }
 
 // ── 自动刷新 ──────────────────────────────────────────
@@ -885,6 +1088,11 @@ onUnmounted(() => clearInterval(refreshTimer))
 .scale-num     { font-size: 22px; font-weight: 700; color: #409eff; line-height: 1; }
 .scale-num.stopped { color: #909399; }
 .scale-ready   { font-size: 11px; color: #909399; margin-top: 2px; }
+
+/* Ingress 规则 */
+.ingress-rule  { margin-bottom: 4px; }
+.ingress-host  { font-family: monospace; font-weight: 600; color: #409eff; margin-right: 8px; }
+.ingress-path  { display: block; padding-left: 12px; }
 
 /* Event 卡片 */
 .empty-tip { text-align: center; color: #ccc; padding: 40px 0; }

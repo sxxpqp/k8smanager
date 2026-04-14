@@ -3,10 +3,13 @@ package main
 import (
 	"learn-go/k8s-api/configmapapi"
 	"learn-go/k8s-api/deploymentsapi"
+	"learn-go/k8s-api/ingressapi"
 	"learn-go/k8s-api/nodeapi"
 	"learn-go/k8s-api/nsapi"
 	"learn-go/k8s-api/podapi"
+	"learn-go/k8s-api/secretsapi"
 	"learn-go/k8s-api/servicesapi"
+	"learn-go/k8s-api/stsapi"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -48,5 +51,13 @@ func main() {
 	//PUT /api/configmaps/:namespace/:name
 
 	r.PUT("/api/configmaps/:namespace/:name", configmapapi.PutConfigMap)
+
+	r.GET("/api/secrets", secretsapi.GetSecrets)
+	r.GET("/api/secrets/:namespace/:name", secretsapi.GetSecret)
+	///api/statefulsets?namespace=default
+	r.GET("/api/statefulsets", stsapi.Getstss)
+	r.PATCH("/api/statefulsets/:namespace/:name/scale", stsapi.PATCHStatefulSetScale)
+
+	r.GET("/api/ingresses", ingressapi.GetIngresses)
 	r.Run("0.0.0.0:8080")
 }

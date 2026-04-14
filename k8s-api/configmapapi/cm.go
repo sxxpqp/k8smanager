@@ -99,7 +99,7 @@ func PutConfigMap(c *gin.Context) {
 		return
 	}
 	cm.Data = body.Data
-	log.Println(cm.Data)
+	// log.Println(cm.Data)
 	cm, err = config.Client.CoreV1().ConfigMaps(ns).Update(context.Background(), cm, v1.UpdateOptions{})
 	if err != nil {
 
