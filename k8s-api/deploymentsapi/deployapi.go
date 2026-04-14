@@ -14,12 +14,18 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 )
 
+type ContainerInfo struct {
+	Name  string `json:"name"`
+	Image string `json:"image"`
+}
+
 type DeployInfo struct {
-	Name          string `json:"name"`
-	Namespace     string `json:"namespace"`
-	Replicas      int32  `json:"replicas"`
-	ReadyReplicas int32  `json:"readyReplicas"`
-	Image         string `json:"image"`
+	Name          string          `json:"name"`
+	Namespace     string          `json:"namespace"`
+	Replicas      int32           `json:"replicas"`
+	ReadyReplicas int32           `json:"readyReplicas"`
+	Image         string          `json:"image"`      // 第一个容器镜像（兼容旧逻辑）
+	Containers    []ContainerInfo `json:"containers"` // 所有容器（镜像更新用）
 }
 
 type deployrs struct {
@@ -38,17 +44,34 @@ func GetDeployments(c *gin.Context) {
 
 	var deploymentlist = []DeployInfo{}
 	for _, v := range pl.Items {
+		// 收集所有容器信息
+		containers := make([]ContainerInfo, 0, len(v.Spec.Template.Spec.Containers))
+		for _, c := range v.Spec.Template.Spec.Containers {
+			containers = append(containers, ContainerInfo{
+				Name:  c.Name,
+				Image: c.Image,
+			})
+		}
 
-		// podinfo.Ready = v.Status.ContainerStatuses
+		image := ""
+		if len(containers) > 0 {
+			image = containers[0].Image
+		}
+
+		var replicas int32
+		if v.Spec.Replicas != nil {
+			replicas = *v.Spec.Replicas
+		}
+
 		deployinfo := DeployInfo{
 			Name:          v.Name,
-			Namespace:     namespace,
-			Replicas:      *v.Spec.Replicas,
+			Namespace:     v.Namespace,
+			Replicas:      replicas,
 			ReadyReplicas: v.Status.ReadyReplicas,
-			Image:         v.Spec.Template.Spec.Containers[0].Image,
+			Image:         image,
+			Containers:    containers,
 		}
 		deploymentlist = append(deploymentlist, deployinfo)
-
 	}
 
 	c.JSON(200, gin.H{
@@ -138,11 +161,11 @@ func PatchDeplayUpdateimage(c *gin.Context) {
 		c.JSON(200, gin.H{"message": err.Error()})
 		return
 	}
-	for _, container := range deployment.Spec.Template.Spec.Containers {
-		if container.Name == di.Container {
-			container.Image = di.Image
+	// ✅ 用下标修改，range 遍历的是副本，直接改不生效
+	for i := range deployment.Spec.Template.Spec.Containers {
+		if deployment.Spec.Template.Spec.Containers[i].Name == di.Container {
+			deployment.Spec.Template.Spec.Containers[i].Image = di.Image
 		}
-
 	}
 	_, err = config.Client.AppsV1().Deployments(ns).Update(context.Background(), deployment, v1.UpdateOptions{})
 	if err != nil {
