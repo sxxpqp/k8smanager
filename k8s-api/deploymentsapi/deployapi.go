@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"learn-go/k8s-api/config"
+	"log"
 	"net/http"
 	"time"
 
@@ -57,7 +58,6 @@ func GetDeployments(c *gin.Context) {
 }
 
 func PATCHDeploymentScale(c *gin.Context) {
-	ctx := context.Background()
 	// replicas
 	// replicasStr := c.PostForm("replicas")
 	// replicasStr := c.PostForm("replicas")
@@ -69,16 +69,20 @@ func PATCHDeploymentScale(c *gin.Context) {
 	namespace := c.Param("namespace")
 	deploy := c.Param("deploy")
 
-	scale, err := config.Client.AppsV1().Deployments(namespace).GetScale(
-		ctx, deploy, metav1.GetOptions{},
-	)
-	scale.Spec.Replicas = v.Replicas
-	fmt.Printf("v.Replicas: %v\n", v.Replicas)
+	deployment, err := config.Client.AppsV1().Deployments(namespace).Get(context.Background(), deploy, v1.GetOptions{})
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"message": err.Error()})
+
 		return
 	}
-	config.Client.AppsV1().Deployments(namespace).UpdateScale(context.Background(), deploy, scale, v1.UpdateOptions{})
+	deployment.Spec.Replicas = &v.Replicas
+	_, err = config.Client.AppsV1().Deployments(namespace).Update(context.Background(), deployment, v1.UpdateOptions{})
+	if err != nil {
+		return
+	}
+	log.Printf("deployment %s/%s scale to %d", deployment.Namespace, deployment.Name, v.Replicas)
+	c.JSON(200, gin.H{
+		"message": "Deployment scale updated",
+	})
 
 }
 
@@ -129,12 +133,29 @@ func PatchDeplayUpdateimage(c *gin.Context) {
 		return
 	}
 
-	data := fmt.Sprintf(`{"spec":{"template":{"spec":{"containers":[{"name":"%s","image":"%s"}]}}}}`, di.Container, di.Image)
-
-	_, err = config.Client.AppsV1().Deployments(ns).Patch(context.Background(), name, types.StrategicMergePatchType, []byte(data), v1.PatchOptions{})
+	deployment, err := config.Client.AppsV1().Deployments(ns).Get(context.Background(), name, v1.GetOptions{})
 	if err != nil {
+		c.JSON(200, gin.H{"message": err.Error()})
 		return
 	}
+	for _, container := range deployment.Spec.Template.Spec.Containers {
+		if container.Name == di.Container {
+			container.Image = di.Image
+		}
+
+	}
+	_, err = config.Client.AppsV1().Deployments(ns).Update(context.Background(), deployment, v1.UpdateOptions{})
+	if err != nil {
+		c.JSON(200, gin.H{"message": err.Error()})
+		return
+	}
+	//data := fmt.Sprintf(`{"spec":{"template":{"spec":{"containers":[{"name":"%s","image":"%s"}]}}}}`, di.Container, di.Image)
+	//
+	//_, err = config.Client.AppsV1().Deployments(ns).Patch(context.Background(), name, types.StrategicMergePatchType, []byte(data), v1.PatchOptions{})
+	//if err != nil {
+	//	return
+	//}
+
 	c.JSON(200, gin.H{
 
 		"message": "镜像更新成功",
