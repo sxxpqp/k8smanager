@@ -26,13 +26,11 @@ export const deletePod = (namespace, name) =>
 export const restartPod = (namespace, name) =>
   http.post(`/pods/${namespace}/${name}/restart`)
 
-// container 参数可选，不传则取第一个容器
 export const getPodLogs = (namespace, name, tail = 200, container = '') =>
   http.get(`/pods/${namespace}/${name}/logs`, {
     params: { tail, ...(container ? { container } : {}) }
   })
 
-// Pod 事件
 export const getPodEvents = (namespace, name) =>
   http.get(`/pods/${namespace}/${name}/events`)
 
@@ -46,6 +44,23 @@ export const scaleDeployment = (namespace, name, replicas) =>
 export const restartDeployment = (namespace, name) =>
   http.post(`/deployments/${namespace}/${name}/restart`)
 
+// 镜像更新：{ container: "nginx", image: "nginx:1.26" }
+export const updateImage = (namespace, name, container, image) =>
+  http.patch(`/deployments/${namespace}/${name}/image`, { container, image })
+
 // ── Service ──────────────────────────────────────────
 export const getServices = (namespace) =>
   http.get('/services', { params: { namespace } })
+
+// ── Node ─────────────────────────────────────────────
+export const getNodes = () => http.get('/nodes')
+
+// ── ConfigMap ────────────────────────────────────────
+export const getConfigMaps = (namespace) =>
+  http.get('/configmaps', { params: { namespace } })
+
+export const getConfigMapDetail = (namespace, name) =>
+  http.get(`/configmaps/${namespace}/${name}`)
+
+export const updateConfigMap = (namespace, name, data) =>
+  http.put(`/configmaps/${namespace}/${name}`, { data })

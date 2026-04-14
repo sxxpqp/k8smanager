@@ -207,7 +207,7 @@
             </template>
           </el-table-column>
 
-          <el-table-column label="操作" width="200" fixed="right">
+          <el-table-column label="操作" width="240" fixed="right">
             <template #default="{ row }">
               <el-button v-if="row.replicas===0" size="small" type="success"
                 :icon="VideoPlay" :loading="row._scaling"
@@ -219,6 +219,9 @@
               <el-button size="small" :icon="RefreshRight"
                 :loading="row._restarting"
                 @click="handleRestartDeploy(row)">重启</el-button>
+
+              <el-button size="small" type="primary" :icon="Upload"
+                @click="handleUpdateImage(row)">更新镜像</el-button>
             </template>
           </el-table-column>
         </el-table>
@@ -278,7 +281,112 @@
         </el-table>
       </el-tab-pane>
 
+      <!-- ══ Node ══ -->
+      <el-tab-pane name="nodes" lazy>
+        <template #label>节点</template>
+
+        <el-table :data="nodes" v-loading="nodesLoading" stripe style="width:100%">
+          <el-table-column label="名称" prop="name" min-width="160">
+            <template #default="{ row }">
+              <span class="mono primary">{{ row.name }}</span>
+            </template>
+          </el-table-column>
+
+          <el-table-column label="状态" width="90">
+            <template #default="{ row }">
+              <el-tag :type="row.status==='Ready'?'success':'danger'" size="small" effect="light">
+                {{ row.status }}
+              </el-tag>
+            </template>
+          </el-table-column>
+
+          <el-table-column label="角色" width="130">
+            <template #default="{ row }">
+              <el-tag v-for="r in row.roles" :key="r" size="small" effect="plain"
+                style="margin:2px">{{ r }}</el-tag>
+            </template>
+          </el-table-column>
+
+          <el-table-column label="IP" prop="ip" width="140">
+            <template #default="{ row }">
+              <span class="mono muted">{{ row.ip }}</span>
+            </template>
+          </el-table-column>
+
+          <el-table-column label="CPU" prop="cpu" width="70" align="center" />
+          <el-table-column label="内存" prop="memory" width="100" align="center" />
+
+          <el-table-column label="系统" prop="os" min-width="160">
+            <template #default="{ row }">
+              <span class="muted small">{{ row.os }}</span>
+            </template>
+          </el-table-column>
+
+          <el-table-column label="运行时" prop="runtime" min-width="160">
+            <template #default="{ row }">
+              <span class="mono muted small">{{ row.runtime }}</span>
+            </template>
+          </el-table-column>
+
+          <el-table-column label="创建时间" prop="age" width="165">
+            <template #default="{ row }">
+              <span class="muted">{{ row.age }}</span>
+            </template>
+          </el-table-column>
+        </el-table>
+      </el-tab-pane>
+
+      <!-- ══ ConfigMap ══ -->
+      <el-tab-pane name="configmaps" lazy>
+        <template #label>ConfigMaps</template>
+
+        <el-table :data="filteredConfigMaps" v-loading="loading" stripe style="width:100%"
+          @row-click="openConfigMap">
+          <el-table-column label="名称" prop="name" min-width="220">
+            <template #default="{ row }">
+              <span class="mono primary">{{ row.name }}</span>
+            </template>
+          </el-table-column>
+
+          <el-table-column label="命名空间" prop="namespace" width="140" />
+
+          <el-table-column label="键数量" width="90" align="center">
+            <template #default="{ row }">
+              <el-tag type="info" size="small">{{ row.dataCount }} 个键</el-tag>
+            </template>
+          </el-table-column>
+
+          <el-table-column label="创建时间" prop="age" width="165">
+            <template #default="{ row }">
+              <span class="muted">{{ row.age }}</span>
+            </template>
+          </el-table-column>
+
+          <el-table-column label="操作" width="100" fixed="right">
+            <template #default="{ row }">
+              <el-button size="small" type="primary" :icon="Edit"
+                @click.stop="openConfigMap(row)">编辑</el-button>
+            </template>
+          </el-table-column>
+        </el-table>
+      </el-tab-pane>
+
     </el-tabs>
+
+    <!-- 镜像更新弹窗 -->
+    <ImageUpdateDialog
+      v-model="imageDialogVisible"
+      :deployment="imageTarget"
+      @updated="loadDeployments"
+    />
+
+    <!-- ConfigMap 编辑弹窗 -->
+    <ConfigMapEditor
+      v-model="cmEditorVisible"
+      :namespace="cmTarget.namespace"
+      :cm-name="cmTarget.name"
+      @updated="loadConfigMaps"
+    />
 
     <!-- 终端弹窗 -->
     <TerminalDialog
@@ -396,18 +504,21 @@
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import {
-  Refresh, RefreshRight, Delete, Document,
-  VideoPlay, VideoPause, Plus, Minus,
+  Refresh, RefreshRight, Delete, Document, Edit,
+  VideoPlay, VideoPause, Plus, Minus, Upload,
   Search, Grid, Warning, InfoFilled, Monitor,
   SuccessFilled, WarningFilled, CircleCloseFilled, QuestionFilled
 } from '@element-plus/icons-vue'
 import {
   getNamespaces, getPods, deletePod, restartPod,
   getDeployments, scaleDeployment, restartDeployment,
-  getServices, getPodEvents
+  getServices, getPodEvents,
+  getNodes, getConfigMaps
 } from '../api/index.js'
-import LogDialog      from '../components/LogDialog.vue'
-import TerminalDialog from '../components/TerminalDialog.vue'
+import LogDialog         from '../components/LogDialog.vue'
+import TerminalDialog    from '../components/TerminalDialog.vue'
+import ImageUpdateDialog from '../components/ImageUpdateDialog.vue'
+import ConfigMapEditor   from '../components/ConfigMapEditor.vue'
 
 // ── 状态 ──────────────────────────────────────────────
 const namespace       = ref('default')
@@ -431,6 +542,24 @@ const logTarget        = ref({ namespace: '', name: '', containers: [] })
 // 终端
 const termDialogVisible = ref(false)
 const termTarget        = ref({ namespace: '', name: '', containers: [] })
+
+// 节点
+const nodes        = ref([])
+const nodesLoading = ref(false)
+
+// ConfigMap
+const configMaps           = ref([])
+const cmEditorVisible      = ref(false)
+const cmTarget             = ref({ namespace: '', name: '' })
+const filteredConfigMaps   = computed(() =>
+  searchText.value
+    ? configMaps.value.filter(c => c.name.includes(searchText.value))
+    : configMaps.value
+)
+
+// 镜像更新
+const imageDialogVisible = ref(false)
+const imageTarget        = ref(null)
 
 // 事件弹窗（独立）
 const eventsDialogVisible = ref(false)
@@ -527,9 +656,36 @@ async function loadServices() {
   }
 }
 
+async function loadNodes() {
+  nodesLoading.value = true
+  try {
+    const res = await getNodes()
+    nodes.value = res.data ?? []
+  } catch (e) {
+    ElMessage.error('获取节点失败: ' + e.message)
+  } finally {
+    nodesLoading.value = false
+  }
+}
+
+async function loadConfigMaps() {
+  try {
+    const res = await getConfigMaps(namespace.value)
+    // 兼容 Go 返回大写字段（未加 json tag 时）
+    configMaps.value = (res.data ?? []).map(cm => ({
+      name:      cm.name      ?? cm.Name,
+      namespace: cm.namespace ?? cm.Namespace ?? namespace.value,
+      dataCount: cm.dataCount ?? cm.DataCount ?? 0,
+      age:       cm.age       ?? cm.Age ?? ''
+    }))
+  } catch (e) {
+    ElMessage.error('获取 ConfigMap 失败: ' + e.message)
+  }
+}
+
 async function loadAll() {
   loading.value = true
-  await Promise.all([loadPods(), loadDeployments(), loadServices()])
+  await Promise.all([loadPods(), loadDeployments(), loadServices(), loadConfigMaps()])
   loading.value = false
   lastRefreshTime.value = new Date().toLocaleTimeString()
 }
@@ -538,7 +694,29 @@ function onNsChange() {
   pods.value = []
   deployments.value = []
   services.value = []
+  configMaps.value = []
   loadAll()
+}
+
+// 节点 tab 懒加载
+watch(activeTab, tab => {
+  if (tab === 'nodes' && !nodes.value.length) loadNodes()
+})
+
+function handleUpdateImage(row) {
+  // 把 deployment 的容器信息传给弹窗
+  // 后端需要在 deployment 列表里返回 containers: [{name, image}]
+  imageTarget.value = {
+    name:       row.name,
+    namespace:  row.namespace,
+    containers: row.containers ?? [{ name: 'app', image: row.image }]
+  }
+  imageDialogVisible.value = true
+}
+
+function openConfigMap(row) {
+  cmTarget.value        = { namespace: row.namespace, name: row.name }
+  cmEditorVisible.value = true
 }
 
 // ── 自动刷新 ──────────────────────────────────────────

@@ -1,7 +1,9 @@
 package main
 
 import (
+	"learn-go/k8s-api/configmapapi"
 	"learn-go/k8s-api/deploymentsapi"
+	"learn-go/k8s-api/nodeapi"
 	"learn-go/k8s-api/nsapi"
 	"learn-go/k8s-api/podapi"
 	"learn-go/k8s-api/servicesapi"
@@ -35,7 +37,9 @@ func main() {
 	r.GET("/api/services", servicesapi.GetServicesList)
 	r.GET("/api/pods/:namespace/:pod/events", podapi.GetPodEvents)
 	r.GET("/api/pods/:namespace/:pod/exec", podapi.ExecPod)
-
+	r.PATCH("/api/deployments/:namespace/:deploy/image", deploymentsapi.PatchDeplayUpdateimage)
+	r.GET("/api/configmaps", configmapapi.GetConfigMap)
+	r.GET("/api/nodes", nodeapi.GetNodes)
 	// Start server on port 8080 (default)
 	// Server will listen on 0.0.0.0:8080 (localhost:8080 on Windows)
 	r.Run("0.0.0.0:8080")

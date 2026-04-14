@@ -18,7 +18,7 @@ type PodInfo struct {
 	Name       string   `json:"name"`
 	Namespace  string   `json:"namespace"`
 	Status     string   `json:"status"`
-	Ready      string   `json:"ready"`      // "就绪数/总数" 如 "1/2"
+	Ready      string   `json:"ready"` // "就绪数/总数" 如 "1/2"
 	Restarts   int32    `json:"restarts"`
 	Node       string   `json:"node"`
 	Age        string   `json:"age"`
@@ -48,8 +48,10 @@ func GetPods(c *gin.Context) {
 
 		// 收集所有容器名（用于日志/终端切换）
 		containers := make([]string, 0, len(p.Spec.Containers))
-		for _, c := range p.Spec.Containers {
-			containers = append(containers, c.Name)
+		for _, v := range p.Spec.Containers {
+			containers = append(containers, v.Name)
+			// fmt.Printf("v.Name: %v\n", v.Name)
+
 		}
 
 		podlist = append(podlist, PodInfo{

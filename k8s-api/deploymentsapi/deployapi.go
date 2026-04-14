@@ -112,3 +112,31 @@ func RestartDeployment(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, gin.H{"message": "Deployment 滚动重启中"})
 }
+
+type DeployImage struct {
+	Container string `json:"container"`
+	Image     string `json:"image"`
+}
+
+func PatchDeplayUpdateimage(c *gin.Context) {
+
+	ns := c.Param("namespace")
+	name := c.Param("deploy")
+	var di DeployImage
+	err := c.BindJSON(&di)
+	if err != nil {
+		c.JSON(200, "json绑定失败")
+		return
+	}
+
+	data := fmt.Sprintf(`{"spec":{"template":{"spec":{"containers":[{"name":"%s","image":"%s"}]}}}}`, di.Container, di.Image)
+
+	_, err = config.Client.AppsV1().Deployments(ns).Patch(context.Background(), name, types.StrategicMergePatchType, []byte(data), v1.PatchOptions{})
+	if err != nil {
+		return
+	}
+	c.JSON(200, gin.H{
+
+		"message": "镜像更新成功",
+	})
+}

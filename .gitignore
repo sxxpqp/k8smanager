@@ -7,3 +7,4 @@
 # 忽略 Delve 调试生成的临
 __debug_bin*
 node_modules/
+k8s-api/tmp
